@@ -1,0 +1,197 @@
+<meta charset="utf-8">
+<title>Nacional Campeón</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: marcador arriba (probabilidad del equipo foco), debajo dos columnas: probabilidades + historia | datos editables */
+:root {
+  --bg: #f3f6f2;
+  --surface: #ffffff;
+  --line: #d6ded5;
+  --fg: #142019;
+  --muted: #5a6b60;
+  --accent: #0b6b3a;
+  --accent-soft: #dcefe2;
+  --good: #1d7a3e;
+  --bad: #b23a2e;
+  --warn: #a86b00;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "Barlow", "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1511; --surface: #16201a; --line: #2a3a30; --fg: #e6efe8; --muted: #93a79a;
+    --accent: #3fbf74; --accent-soft: #1d3527; --good: #4cc37d; --bad: #ef7d70; --warn: #e0a640;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1511; --surface: #16201a; --line: #2a3a30; --fg: #e6efe8; --muted: #93a79a;
+  --accent: #3fbf74; --accent-soft: #1d3527; --good: #4cc37d; --bad: #ef7d70; --warn: #e0a640;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--body); margin: 0; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 48px; display: grid; gap: 20px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: .01em; }
+h2 { font-size: 1.35rem; text-transform: uppercase; letter-spacing: .04em; }
+.label { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.num { font-variant-numeric: tabular-nums; }
+.banner { background: var(--accent-soft); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; font-size: .9rem; }
+.banner strong { color: var(--warn); }
+
+/* Marcador */
+.board { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr); gap: 20px; align-items: stretch; }
+.hero { background: var(--accent); color: #fff; border-radius: 8px; padding: 18px 20px; display: grid; gap: 4px; align-content: start; }
+.hero .label { color: rgba(255,255,255,.8); }
+.hero select { font: 600 1.05rem var(--body); background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.45); border-radius: 4px; padding: 4px 6px; max-width: 100%; }
+.hero select option { color: #000; }
+.big { font-family: var(--display); font-weight: 800; font-size: clamp(3.4rem, 9vw, 5.5rem); line-height: 1; }
+.hero .sub { font-size: .9rem; opacity: .9; }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 2px; align-content: start; }
+.tile b { font-family: var(--display); font-size: 2rem; line-height: 1.1; }
+.right { display: grid; gap: 12px; }
+.next { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 8px; }
+.scen { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.scen div { border-radius: 6px; padding: 8px 10px; background: var(--bg); display: grid; gap: 2px; }
+.scen b { font-family: var(--display); font-size: 1.5rem; }
+.chip { display: inline-block; font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; padding: 1px 8px; border-radius: 99px; }
+.chip.w { background: var(--good); color: #fff; } .chip.d { background: var(--muted); color: #fff; } .chip.l { background: var(--bad); color: #fff; }
+
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.panel header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+th, td { padding: 5px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+tr.focus td { background: var(--accent-soft); font-weight: 600; }
+.bar { display: inline-block; height: 6px; border-radius: 3px; background: var(--accent); vertical-align: middle; margin-left: 6px; }
+svg text { fill: var(--muted); font: 11px var(--body); }
+
+/* Datos */
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.tabs button { background: none; border: 0; border-bottom: 3px solid transparent; padding: 6px 10px; font: 600 .9rem var(--body); color: var(--muted); cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+input, select, textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; }
+input[type="number"] { width: 3.6em; text-align: right; }
+td input[type="text"] { width: 11em; }
+textarea { width: 100%; min-height: 120px; font: .82rem var(--mono); }
+button.btn { font: 600 .88rem var(--body); border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 4px; padding: 5px 12px; cursor: pointer; }
+button.ghost { background: transparent; color: var(--accent); }
+button.x { border: 0; background: none; color: var(--bad); cursor: pointer; font-size: 1rem; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: default; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.fx { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: .9rem; }
+.fx .h { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fx .a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fx.mine { background: var(--accent-soft); }
+.others { margin-top: 10px; }
+.others summary { padding: 6px 0; }
+.note { font-size: .82rem; color: var(--muted); }
+.status { font-size: .85rem; color: var(--muted); min-height: 1.3em; }
+.status.err { color: var(--bad); }
+details summary { cursor: pointer; font-weight: 600; }
+
+@media (max-width: 860px) {
+  .board, .cols { grid-template-columns: minmax(0, 1fr); }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .fx { grid-template-columns: minmax(0, 1fr) auto auto auto minmax(0, 1fr); }
+  .fx .rec { grid-column: 1 / 5; justify-self: end; }
+}
+</style>
+
+<div class="wrap">
+  <div class="banner" id="banner" hidden>
+    <strong>Datos de ejemplo ficticios.</strong> La tabla y los partidos que ves son inventados para mostrar cómo funciona la app.
+    Carga la tabla real de la Liga BetPlay y los partidos pendientes en el panel <em>Datos</em>.
+  </div>
+
+  <section class="board">
+    <div class="hero">
+      <span class="label">Probabilidad de ser campeón</span>
+      <select id="focus" aria-label="Equipo a seguir"></select>
+      <span class="big num" id="pChamp">–</span>
+      <span class="sub" id="heroSub">Calculando…</span>
+    </div>
+    <div class="right">
+      <div class="tiles">
+        <div class="tile"><span class="label">Clasifica a los 8</span><b class="num" id="pTop8">–</b></div>
+        <div class="tile"><span class="label">Llega a la final</span><b class="num" id="pFinal">–</b></div>
+        <div class="tile"><span class="label">1º fase regular</span><b class="num" id="pFirst">–</b></div>
+        <div class="tile"><span class="label">Posición media</span><b class="num" id="avgPos">–</b></div>
+      </div>
+      <div class="next" id="nextBox">
+        <span class="label" id="nextTitle">Próximo partido</span>
+        <div class="scen" id="scen"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cols">
+    <div class="panel">
+      <header><h2>Así cambia la probabilidad</h2><span class="label">Campeón, después de cada resultado</span></header>
+      <div id="chart"></div>
+      <header><h2>Todos los equipos</h2><span class="label" id="simInfo"></span></header>
+      <div class="scroll"><table id="probTable"></table></div>
+    </div>
+
+    <div class="panel">
+      <header><h2>Datos</h2>
+        <div class="row">
+          <button class="btn ghost" id="undo" type="button">Deshacer último resultado</button>
+        </div>
+      </header>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="pend" aria-selected="true">Partidos pendientes</button>
+        <button type="button" role="tab" data-tab="tabla" aria-selected="false">Tabla actual</button>
+        <button type="button" role="tab" data-tab="cfg" aria-selected="false">Modelo y respaldo</button>
+      </div>
+
+      <div data-pane="pend">
+        <p class="note">Escribe el marcador cuando termine un partido y pulsa <b>Registrar</b>. La tabla se actualiza y las probabilidades se recalculan.</p>
+        <div id="fixtures"></div>
+        <details>
+          <summary>Agregar partidos pendientes</summary>
+          <p class="note">Un partido por línea, en formato <code>Local - Visitante</code>. Los nombres deben coincidir con los de la tabla.</p>
+          <textarea id="fxPaste" placeholder="Atlético Nacional - Rival A"></textarea>
+          <div class="row"><button class="btn" id="fxAdd" type="button">Agregar</button><button class="btn ghost" id="fxClear" type="button">Borrar todos los pendientes</button></div>
+          <div class="status" id="fxStatus"></div>
+        </details>
+      </div>
+
+      <div data-pane="tabla" hidden>
+        <p class="note">Puedes editar cada celda. <b>Ajuste</b> sube (más de 1) o baja (menos de 1) la fuerza de un equipo si crees que la tabla no lo refleja bien.</p>
+        <div class="scroll"><table id="teamTable"></table></div>
+        <details>
+          <summary>Pegar tabla completa</summary>
+          <p class="note">Una línea por equipo: <code>Equipo PJ G E P GF GC</code>. Sirve separar con espacios, tabuladores o punto y coma. Si la copias de una web con columnas DG y Pts al final, se ignoran.</p>
+          <textarea id="tbPaste" placeholder="Atlético Nacional 12 6 4 2 20 9"></textarea>
+          <div class="row"><button class="btn" id="tbLoad" type="button">Reemplazar tabla</button></div>
+          <div class="status" id="tbStatus"></div>
+        </details>
+      </div>
+
+      <div data-pane="cfg" hidden>
+        <div class="row"><label for="cfgSims">Simulaciones</label><input id="cfgSims" type="number" min="1000" max="100000" step="1000" style="width:6em"></div>
+        <div class="row"><label for="cfgHome">Ventaja de local (multiplicador de goles)</label><input id="cfgHome" type="number" min="0.8" max="1.6" step="0.01" style="width:5em"></div>
+        <p class="note">Formato que simula la app: los 8 primeros pasan a cuadrangulares. 1º y 2º son cabeza de grupo, y las parejas 3º-4º, 5º-6º y 7º-8º se sortean entre los dos grupos. Cada grupo juega ida y vuelta; el ganador va a la final de ida y vuelta, y en empate global se definen penales. Revisa que esto coincida con el reglamento vigente de la Dimayor.</p>
+        <p class="note">Cómo se estima la fuerza: goles a favor y en contra por partido de cada equipo, mezclados con 5 partidos del promedio de la liga para no exagerar rachas cortas. Los goles de cada partido se sortean con una distribución de Poisson.</p>
+        <h3>Respaldo</h3>
+        <p class="note">Los datos se guardan en este navegador. Para no perderlos, copia el respaldo y guárdalo. Para restaurar, pégalo abajo.</p>
+        <div class="row"><button class="btn ghost" id="copyBackup" type="button">Copiar respaldo</button><button class="btn" id="restore" type="button">Restaurar</button><button class="btn ghost" id="loadDemo" type="button">Volver al ejemplo</button></div>
+        <textarea id="backup" aria-label="Respaldo en JSON"></textarea>
+        <div class="status" id="cfgStatus"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script type="module" src="app.js"></script>
