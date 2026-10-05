@@ -33,6 +33,7 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--body); margin: 0; }
 .wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 48px; display: grid; gap: 20px; }
 h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: .01em; }
@@ -94,6 +95,7 @@ button:disabled { opacity: .5; cursor: default; }
 .others { margin-top: 10px; }
 .fx .meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: .78rem; color: var(--muted); padding-bottom: 2px; }
 .probs { font-family: var(--mono); font-size: .74rem; }
+.tag { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--warn); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
 .probs.jev { color: var(--accent); font-weight: 600; }
 .fx .ctx { flex: 1 1 16em; min-width: 0; font-size: .8rem; padding: 2px 6px; }
 .jevbar { display: grid; gap: 6px; padding: 10px 12px; border: 1px dashed var(--accent); border-radius: 6px; margin-bottom: 10px; }
@@ -115,8 +117,7 @@ details summary { cursor: pointer; font-weight: 600; }
 
 <div class="wrap">
   <div class="banner" id="banner" hidden>
-    <strong>Datos de ejemplo ficticios.</strong> La tabla y los partidos que ves son inventados para mostrar cómo funciona la app.
-    Carga la tabla real de la Liga BetPlay y los partidos pendientes en el panel <em>Datos</em>.
+    <strong>Calendario aproximado.</strong> <span id="bannerText"></span>
   </div>
 
   <section class="board">
@@ -174,6 +175,8 @@ details summary { cursor: pointer; font-weight: 600; }
           <p class="note">Un partido por línea, en formato <code>Local - Visitante</code>. Los nombres deben coincidir con los de la tabla.</p>
           <textarea id="fxPaste" placeholder="Atlético Nacional - Rival A"></textarea>
           <div class="row"><button class="btn" id="fxAdd" type="button">Agregar</button><button class="btn ghost" id="fxClear" type="button">Borrar todos los pendientes</button></div>
+          <p class="note">¿No tienes el calendario completo? La app puede sortear los partidos que faltan para que cada equipo llegue al total de la fase regular. Quedan marcados como <span class="tag">aprox.</span></p>
+          <div class="row"><label for="fxTotal">Partidos por equipo</label><input id="fxTotal" type="number" min="2" max="60"><button class="btn ghost" id="fxFill" type="button">Completar calendario aproximado</button><button class="btn ghost" id="fxApproxClear" type="button">Quitar partidos aproximados</button></div>
           <div class="status" id="fxStatus"></div>
         </details>
       </div>
@@ -199,7 +202,7 @@ details summary { cursor: pointer; font-weight: 600; }
         <p class="note">Cómo se estima la fuerza: goles a favor y en contra por partido de cada equipo, mezclados con 5 partidos del promedio de la liga para no exagerar rachas cortas. Los goles de cada partido se sortean con una distribución de Poisson.</p>
         <h3>Respaldo</h3>
         <p class="note">Los datos se guardan en este navegador. Para no perderlos, copia el respaldo y guárdalo. Para restaurar, pégalo abajo.</p>
-        <div class="row"><button class="btn ghost" id="copyBackup" type="button">Copiar respaldo</button><button class="btn" id="restore" type="button">Restaurar</button><button class="btn ghost" id="loadDemo" type="button">Volver al ejemplo</button></div>
+        <div class="row"><button class="btn ghost" id="copyBackup" type="button">Copiar respaldo</button><button class="btn" id="restore" type="button">Restaurar</button><button class="btn ghost" id="loadDemo" type="button">Volver a la tabla del 5 de octubre</button></div>
         <textarea id="backup" aria-label="Respaldo en JSON"></textarea>
         <div class="status" id="cfgStatus"></div>
       </div>

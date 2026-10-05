@@ -1,4 +1,5 @@
-import { simulate, recordResult, rng, strengths, matchProbs, DEFAULT_CONFIG } from './sim.js';
+import { simulate, recordResult, strengths, matchProbs, fillSchedule, DEFAULT_CONFIG } from './sim.js';
+import { LIGA_2026_II } from './liga-2026-ii.js';
 
 const STORE = 'nacional-probabilidades-v1';
 const FOCUS_DEFAULT = 'Atlético Nacional';
@@ -8,39 +9,20 @@ let state;
 let jevAvailable = false;
 const newId = () => Math.random().toString(36).slice(2, 10);
 
-// ---------- Datos de ejemplo (ficticios) ----------
-// 20 equipos, calendario todos contra todos de 19 fechas: 13 jugadas (resultados
-// sorteados) y 6 pendientes. Solo sirve para mostrar la app funcionando.
-function demoState() {
-  const names = [FOCUS_DEFAULT, ...'ABCDEFGHIJKLMNOPQRS'.split('').map(c => `Rival ${c}`)];
-  const power = Object.fromEntries(names.map((n, i) => [n, i === 0 ? 1.4 : 1.2 - i * 0.022]));
-  const rand = rng(2026);
-  const rounds = [];
-  const list = names.slice();
-  for (let r = 0; r < 19; r++) {
-    const round = [];
-    for (let i = 0; i < 10; i++) {
-      const a = list[i], b = list[19 - i];
-      round.push(r % 2 ? { home: b, away: a } : { home: a, away: b });
-    }
-    rounds.push(round);
-    list.splice(1, 0, list.pop());
-  }
-  let teams = names.map(name => ({ name, pj: 0, g: 0, e: 0, p: 0, gf: 0, gc: 0, ajuste: 1 }));
-  const goals = l => { let k = 0, p = 1; const L = Math.exp(-l); do { k++; p *= rand(); } while (p > L); return k - 1; };
-  for (const round of rounds.slice(0, 13)) {
-    for (const f of round) {
-      const fixtures = [f];
-      const gh = goals(1.25 * power[f.home] / power[f.away]);
-      const ga = goals(1.0 * power[f.away] / power[f.home]);
-      teams = recordResult(teams, fixtures, 0, gh, ga).teams;
-    }
-  }
+// ---------- Datos iniciales ----------
+// Tabla real del 5 de octubre, los partidos de Nacional encontrados en la web y,
+// para el resto de la liga, un calendario aproximado hasta tener el oficial.
+function ligaState() {
+  const L = LIGA_2026_II;
+  const teams = L.teams.map(t => ({ ...t }));
+  const known = L.fixtures.map(f => ({ ...f, id: newId() }));
+  const approx = fillSchedule(teams, known, L.totalMatches).map(f => ({ ...f, id: newId() }));
   return {
-    demo: true,
+    source: L.fuente,
+    totalMatches: L.totalMatches,
     focus: FOCUS_DEFAULT,
     teams,
-    fixtures: rounds.slice(13).flat().map(f => ({ ...f, id: newId() })),
+    fixtures: [...known, ...approx],
     history: [],
     undo: [],
     cfg: { sims: DEFAULT_CONFIG.sims, homeAdv: DEFAULT_CONFIG.homeAdv, jevWeight: DEFAULT_CONFIG.jevWeight },
@@ -50,13 +32,15 @@ function demoState() {
 function load() {
   try {
     const raw = localStorage.getItem(STORE);
-    if (raw) return normalize(JSON.parse(raw));
-  } catch { /* sin almacenamiento: se usa el ejemplo */ }
-  return demoState();
+    const s = raw && JSON.parse(raw);
+    // Los datos ficticios de versiones anteriores se reemplazan por la tabla real.
+    if (s && !s.demo) return normalize(s);
+  } catch { /* sin almacenamiento: se usan los datos iniciales */ }
+  return ligaState();
 }
 function normalize(s) {
   s.cfg = { sims: DEFAULT_CONFIG.sims, homeAdv: DEFAULT_CONFIG.homeAdv, jevWeight: DEFAULT_CONFIG.jevWeight, ...s.cfg };
-  s.history ??= []; s.undo ??= [];
+  s.history ??= []; s.undo ??= []; s.totalMatches ??= LIGA_2026_II.totalMatches;
   for (const f of s.fixtures) f.id ??= newId();
   return s;
 }
@@ -183,6 +167,7 @@ function renderFixtures() {
       <button class="x" type="button" data-del="${i}" aria-label="Quitar partido" title="Quitar partido">×</button>
       <div class="meta">
         <span class="probs" title="Local · Empate · Visitante">Modelo ${trio(matchProbs(f.home, f.away, model, cfg))}</span>
+        ${f.approx ? '<span class="tag" title="Partido sorteado, no es del calendario oficial">aprox.</span>' : ''}
         ${f.jev ? `<span class="probs jev" title="Pronóstico de Jev: local · empate · visitante">Jev ${trio(f.jev)}</span>` : ''}
         ${jevAvailable ? `<input type="text" class="ctx" data-note="${i}" value="${esc(f.note ?? '')}" maxlength="600" placeholder="Contexto para Jev (opcional): lesiones, suspendidos, rotación…" aria-label="Contexto del partido para Jev">` : ''}
       </div>
@@ -214,11 +199,19 @@ function renderTeams() {
     `</tbody><tfoot><tr><td colspan="12"><button class="btn ghost" type="button" id="addTeam">Agregar equipo</button></td></tr></tfoot>`;
 }
 
+function renderBanner() {
+  const n = state.fixtures.filter(f => f.approx).length;
+  $('banner').hidden = !n;
+  $('bannerText').textContent = `${n} de los ${state.fixtures.length} partidos pendientes son aproximados: los rivales y la localía se sortearon porque falta el calendario oficial. `
+    + 'Pega el calendario real en Partidos pendientes y quita los aproximados para un cálculo exacto.';
+}
+
 function renderAll() {
-  $('banner').hidden = !state.demo;
+  renderBanner();
   renderFocus();
   renderFixtures();
   renderTeams();
+  $('fxTotal').value = state.totalMatches;
   $('cfgSims').value = state.cfg.sims;
   $('cfgHome').value = state.cfg.homeAdv;
   $('cfgJev').value = state.cfg.jevWeight;
@@ -226,8 +219,7 @@ function renderAll() {
   $('jevOff').hidden = jevAvailable;
 }
 
-// Al editar los datos a mano dejan de ser el ejemplo.
-function touched() { state.demo = false; $('banner').hidden = true; }
+function touched() { renderBanner(); }
 
 // ---------- Eventos ----------
 $('focus').addEventListener('change', e => {
@@ -296,6 +288,29 @@ $('jevClear').addEventListener('click', () => {
   for (const f of state.fixtures) delete f.jev;
   $('jevStatus').className = 'status'; $('jevStatus').textContent = 'Quité los pronósticos de Jev. La simulación usa solo el modelo.';
   save(); renderFixtures(); recompute();
+});
+
+$('fxFill').addEventListener('click', () => {
+  const st = $('fxStatus');
+  const total = Math.round(+$('fxTotal').value);
+  if (!(total >= 2)) { st.className = 'status err'; st.textContent = 'Escribe cuántos partidos juega cada equipo en la fase regular.'; return; }
+  try {
+    const extra = fillSchedule(state.teams, state.fixtures, total, Date.now() % 100000).map(f => ({ ...f, id: newId() }));
+    state.totalMatches = total;
+    state.fixtures.push(...extra);
+    st.className = 'status'; st.textContent = `Agregué ${extra.length} partido(s) aproximado(s).`;
+    touched(); save(); renderFixtures(); recompute();
+  } catch (err) {
+    st.className = 'status err'; st.textContent = err.message;
+  }
+});
+
+$('fxApproxClear').addEventListener('click', () => {
+  const before = state.fixtures.length;
+  state.fixtures = state.fixtures.filter(f => !f.approx);
+  $('fxStatus').className = 'status';
+  $('fxStatus').textContent = `Quité ${before - state.fixtures.length} partido(s) aproximado(s).`;
+  touched(); save(); renderFixtures(); recompute();
 });
 
 $('undo').addEventListener('click', () => {
@@ -429,9 +444,10 @@ $('restore').addEventListener('click', () => {
 });
 let demoArmed = false;
 $('loadDemo').addEventListener('click', e => {
-  if (!demoArmed) { demoArmed = true; e.target.textContent = 'Pulsa otra vez: se borran tus datos'; setTimeout(() => { demoArmed = false; e.target.textContent = 'Volver al ejemplo'; }, 4000); return; }
-  demoArmed = false; e.target.textContent = 'Volver al ejemplo';
-  state = demoState(); save(); renderAll(); recompute();
+  const label = 'Volver a la tabla del 5 de octubre';
+  if (!demoArmed) { demoArmed = true; e.target.textContent = 'Pulsa otra vez: se borran tus cambios'; setTimeout(() => { demoArmed = false; e.target.textContent = label; }, 4000); return; }
+  demoArmed = false; e.target.textContent = label;
+  state = ligaState(); save(); renderAll(); recompute();
 });
 
 document.querySelector('.tabs').addEventListener('click', e => {

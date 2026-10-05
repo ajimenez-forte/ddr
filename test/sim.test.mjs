@@ -78,3 +78,27 @@ test('un pronóstico de Jev con peso 1 manda en el resultado del partido', () =>
   const r0 = simulate(t, fx, { sims: 300, jevWeight: 0, focus: 'E10' });
   assert.ok(r0.nextMatch.W.share < 1);
 });
+
+test('fillSchedule completa a cada equipo sin repetir cruces', async () => {
+  const { fillSchedule } = await import('../app/sim.js');
+  const { LIGA_2026_II: L } = await import('../app/liga-2026-ii.js');
+  const extra = fillSchedule(L.teams, L.fixtures, L.totalMatches);
+  const all = [...L.fixtures, ...extra];
+  for (const t of L.teams) {
+    const n = all.filter(f => f.home === t.name || f.away === t.name).length;
+    assert.equal(t.pj + n, L.totalMatches, t.name);
+  }
+  const keys = all.map(f => [f.home, f.away].sort().join('|'));
+  assert.equal(new Set(keys).size, keys.length);
+  assert.ok(extra.every(f => f.approx));
+});
+
+test('la tabla real cuadra', async () => {
+  const { LIGA_2026_II: L } = await import('../app/liga-2026-ii.js');
+  assert.equal(L.teams.length, 20);
+  for (const t of L.teams) assert.equal(t.g + t.e + t.p, t.pj, t.name);
+  const gf = L.teams.reduce((s, t) => s + t.gf, 0), gc = L.teams.reduce((s, t) => s + t.gc, 0);
+  assert.equal(gf, gc);
+  const names = new Set(L.teams.map(t => t.name));
+  for (const f of L.fixtures) assert.ok(names.has(f.home) && names.has(f.away));
+});

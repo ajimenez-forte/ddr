@@ -247,3 +247,44 @@ export function recordResult(teams, fixtures, idx, gh, ga) {
   if (gh > ga) { H.g++; A.p++; } else if (gh < ga) { A.g++; H.p++; } else { H.e++; A.e++; }
   return { teams: upd, fixtures: fixtures.filter((_, i) => i !== idx) };
 }
+
+/**
+ * Completa el calendario con partidos aproximados hasta que cada equipo llegue
+ * a `total` partidos. Sirve cuando no se tiene el calendario oficial: los rivales
+ * y la localía se sortean, evitando repetir cruces que ya están pendientes.
+ * Devuelve solo los partidos nuevos, marcados con approx: true.
+ */
+export function fillSchedule(teams, fixtures, total, seed = 7) {
+  const need0 = {};
+  for (const t of teams) need0[t.name] = total - t.pj;
+  for (const f of fixtures) { need0[f.home]--; need0[f.away]--; }
+  const sum = Object.values(need0).reduce((s, n) => s + Math.max(0, n), 0);
+  if (sum % 2) throw new Error('Los partidos que faltan no dan un número par. Revisa los PJ de la tabla.');
+  const key = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const taken = new Set(fixtures.map(f => key(f.home, f.away)));
+
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const rand = rng(seed + attempt);
+    const need = { ...need0 };
+    const used = new Set(taken);
+    const out = [];
+    let stuck = false;
+    while (!stuck) {
+      const open = Object.keys(need).filter(n => need[n] > 0);
+      if (!open.length) break;
+      // El equipo con más partidos por asignar elige primero.
+      open.sort((a, b) => need[b] - need[a] || rand() - 0.5);
+      const a = open[0];
+      const options = open.slice(1).filter(b => !used.has(key(a, b)));
+      if (!options.length) { stuck = true; break; }
+      const top = Math.max(...options.map(b => need[b]));
+      const best = options.filter(b => need[b] >= top - 1);
+      const b = best[Math.floor(rand() * best.length)];
+      used.add(key(a, b));
+      need[a]--; need[b]--;
+      out.push(rand() < 0.5 ? { home: a, away: b, approx: true } : { home: b, away: a, approx: true });
+    }
+    if (!stuck) return out;
+  }
+  throw new Error('No pude armar un calendario aproximado sin repetir cruces.');
+}

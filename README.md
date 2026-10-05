@@ -19,7 +19,7 @@ Sin key la app funciona igual, solo con el modelo de goles.
 2. En **Partidos pendientes** pega los partidos que faltan de la fase regular, uno por línea: `Local - Visitante`.
 3. Cuando termine un partido, escribe el marcador y pulsa **Registrar**. La tabla se actualiza, las probabilidades se recalculan y la gráfica agrega un punto.
 
-La app abre con datos de ejemplo **ficticios** (Nacional y 19 rivales genéricos) para mostrar cómo funciona. No son la tabla real.
+La app abre con la tabla real de la Liga BetPlay 2026-II al 5 de octubre de 2026 (`app/liga-2026-ii.js`), transcrita de una captura de Google. Los 10 partidos que le faltan a Nacional salen de una búsqueda web y no están verificados. El resto del calendario se sortea (partidos marcados **aprox.**) hasta que se cargue el oficial. En **Partidos pendientes** puedes quitar los aproximados y pegar el calendario real.
 
 Los datos se guardan en el navegador (`localStorage`). Usa **Modelo y respaldo → Copiar respaldo** para guardarlos aparte.
 
