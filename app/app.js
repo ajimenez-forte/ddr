@@ -1,10 +1,12 @@
-import { simulate, recordResult, rng, DEFAULT_CONFIG } from './sim.js';
+import { simulate, recordResult, rng, strengths, matchProbs, DEFAULT_CONFIG } from './sim.js';
 
 const STORE = 'nacional-probabilidades-v1';
 const FOCUS_DEFAULT = 'Atlético Nacional';
 const $ = id => document.getElementById(id);
 
 let state;
+let jevAvailable = false;
+const newId = () => Math.random().toString(36).slice(2, 10);
 
 // ---------- Datos de ejemplo (ficticios) ----------
 // 20 equipos, calendario todos contra todos de 19 fechas: 13 jugadas (resultados
@@ -38,19 +40,25 @@ function demoState() {
     demo: true,
     focus: FOCUS_DEFAULT,
     teams,
-    fixtures: rounds.slice(13).flat(),
+    fixtures: rounds.slice(13).flat().map(f => ({ ...f, id: newId() })),
     history: [],
     undo: [],
-    cfg: { sims: DEFAULT_CONFIG.sims, homeAdv: DEFAULT_CONFIG.homeAdv },
+    cfg: { sims: DEFAULT_CONFIG.sims, homeAdv: DEFAULT_CONFIG.homeAdv, jevWeight: DEFAULT_CONFIG.jevWeight },
   };
 }
 
 function load() {
   try {
     const raw = localStorage.getItem(STORE);
-    if (raw) return JSON.parse(raw);
+    if (raw) return normalize(JSON.parse(raw));
   } catch { /* sin almacenamiento: se usa el ejemplo */ }
   return demoState();
+}
+function normalize(s) {
+  s.cfg = { sims: DEFAULT_CONFIG.sims, homeAdv: DEFAULT_CONFIG.homeAdv, jevWeight: DEFAULT_CONFIG.jevWeight, ...s.cfg };
+  s.history ??= []; s.undo ??= [];
+  for (const f of s.fixtures) f.id ??= newId();
+  return s;
 }
 function save() {
   try { localStorage.setItem(STORE, JSON.stringify(state)); } catch { /* opcional */ }
@@ -58,6 +66,7 @@ function save() {
 
 // ---------- Formato ----------
 const pct = x => x == null ? '–' : x >= 0.995 && x < 1 ? '>99%' : x > 0 && x < 0.005 ? '<1%' : `${Math.round(x * 100)}%`;
+const trio = p => `${Math.round(p.home * 100)} · ${Math.round(p.draw * 100)} · ${Math.round(p.away * 100)}`;
 const pct1 = x => `${(x * 100).toFixed(1)}%`;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -83,7 +92,7 @@ function recompute(historyLabel) {
     if (id !== runId) return;
     const t0 = performance.now();
     const res = simulate(state.teams, state.fixtures, {
-      sims: state.cfg.sims, homeAdv: state.cfg.homeAdv, focus: state.focus,
+      sims: state.cfg.sims, homeAdv: state.cfg.homeAdv, jevWeight: state.cfg.jevWeight, focus: state.focus,
     });
     lastResult = res;
     const f = res.table.find(r => r.name === state.focus);
@@ -161,6 +170,8 @@ function renderFocus() {
 
 function renderFixtures() {
   const mine = f => f.home === state.focus || f.away === state.focus;
+  const cfg = { ...DEFAULT_CONFIG, homeAdv: state.cfg.homeAdv };
+  const model = strengths(state.teams, cfg);
   const row = (f, i) => `
     <div class="fx ${mine(f) ? 'mine' : ''}">
       <span class="h" title="${esc(f.home)}">${esc(f.home)}</span>
@@ -170,10 +181,16 @@ function renderFixtures() {
       <span class="a" title="${esc(f.away)}">${esc(f.away)}</span>
       <button class="btn rec" type="button" data-rec="${i}">Registrar</button>
       <button class="x" type="button" data-del="${i}" aria-label="Quitar partido" title="Quitar partido">×</button>
+      <div class="meta">
+        <span class="probs" title="Local · Empate · Visitante">Modelo ${trio(matchProbs(f.home, f.away, model, cfg))}</span>
+        ${f.jev ? `<span class="probs jev" title="Pronóstico de Jev: local · empate · visitante">Jev ${trio(f.jev)}</span>` : ''}
+        ${jevAvailable ? `<input type="text" class="ctx" data-note="${i}" value="${esc(f.note ?? '')}" maxlength="600" placeholder="Contexto para Jev (opcional): lesiones, suspendidos, rotación…" aria-label="Contexto del partido para Jev">` : ''}
+      </div>
     </div>`;
   const all = state.fixtures.map((f, i) => ({ f, i }));
   const own = all.filter(x => mine(x.f)), rest = all.filter(x => !mine(x.f));
   const wasOpen = document.querySelector('#fixtures details')?.open;
+  $('jevBar').hidden = !jevAvailable || !all.length;
   $('fixtures').innerHTML = !all.length
     ? '<p class="note">No hay partidos pendientes. La fase regular está completa y la simulación solo juega cuadrangulares y final.</p>'
     : `<p class="label">Partidos de ${esc(state.focus)} (${own.length})</p>${own.map(x => row(x.f, x.i)).join('') || '<p class="note">Ya jugó todos sus partidos.</p>'}
@@ -204,6 +221,9 @@ function renderAll() {
   renderTeams();
   $('cfgSims').value = state.cfg.sims;
   $('cfgHome').value = state.cfg.homeAdv;
+  $('cfgJev').value = state.cfg.jevWeight;
+  $('cfgJevVal').textContent = `${Math.round(state.cfg.jevWeight * 100)}%`;
+  $('jevOff').hidden = jevAvailable;
 }
 
 // Al editar los datos a mano dejan de ser el ejemplo.
@@ -236,6 +256,46 @@ $('fixtures').addEventListener('click', e => {
     state.fixtures.splice(+del.dataset.del, 1);
     touched(); save(); renderFixtures(); recompute();
   }
+});
+
+$('fixtures').addEventListener('change', e => {
+  const el = e.target.closest('[data-note]');
+  if (!el) return;
+  state.fixtures[+el.dataset.note].note = el.value.trim();
+  save();
+});
+
+$('askJev').addEventListener('click', async () => {
+  const st = $('jevStatus');
+  const pick = state.fixtures.filter(f => f.home === state.focus || f.away === state.focus || f.note);
+  const send = pick.slice(0, 40);
+  if (!send.length) { st.className = 'status err'; st.textContent = 'No hay partidos de este equipo ni partidos con contexto para consultar.'; return; }
+  $('askJev').disabled = true;
+  st.className = 'status'; st.textContent = `Consultando a Jev por ${send.length} partido(s)…`;
+  try {
+    const r = await fetch('/api/jev', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ table: state.teams, fixtures: send.map(f => ({ id: f.id, home: f.home, away: f.away, note: f.note })) }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || `Error ${r.status}`);
+    for (const fc of data.forecasts) {
+      const f = state.fixtures.find(x => x.id === fc.id);
+      if (f) f.jev = { home: fc.home, draw: fc.draw, away: fc.away, note: f.note ?? '' };
+    }
+    st.textContent = `Jev pronosticó ${data.forecasts.length} partido(s)` + (pick.length > 40 ? ` (de ${pick.length}; máximo 40 por consulta).` : '.') + ' La simulación ya los usa.';
+    save(); renderFixtures(); recompute();
+  } catch (err) {
+    st.className = 'status err'; st.textContent = err.message;
+  } finally {
+    $('askJev').disabled = false;
+  }
+});
+
+$('jevClear').addEventListener('click', () => {
+  for (const f of state.fixtures) delete f.jev;
+  $('jevStatus').className = 'status'; $('jevStatus').textContent = 'Quité los pronósticos de Jev. La simulación usa solo el modelo.';
+  save(); renderFixtures(); recompute();
 });
 
 $('undo').addEventListener('click', () => {
@@ -314,7 +374,7 @@ $('fxAdd').addEventListener('click', () => {
   const add = [], bad = [];
   for (const line of lines) {
     const parts = line.split(/\s+(?:-|vs\.?|v)\s+|\t|;/i).map(s => s.trim()).filter(Boolean);
-    if (parts.length === 2 && names.has(parts[0]) && names.has(parts[1]) && parts[0] !== parts[1]) add.push({ home: parts[0], away: parts[1] });
+    if (parts.length === 2 && names.has(parts[0]) && names.has(parts[1]) && parts[0] !== parts[1]) add.push({ id: newId(), home: parts[0], away: parts[1] });
     else bad.push(line);
   }
   state.fixtures.push(...add);
@@ -340,6 +400,14 @@ $('cfgHome').addEventListener('change', e => {
   e.target.value = state.cfg.homeAdv; save(); recompute();
 });
 
+$('cfgJev').addEventListener('input', e => {
+  $('cfgJevVal').textContent = `${Math.round(+e.target.value * 100)}%`;
+});
+$('cfgJev').addEventListener('change', e => {
+  state.cfg.jevWeight = Math.min(1, Math.max(0, +e.target.value));
+  save(); recompute();
+});
+
 $('copyBackup').addEventListener('click', () => {
   const { undo, ...rest } = state;
   const txt = JSON.stringify(rest);
@@ -351,7 +419,7 @@ $('restore').addEventListener('click', () => {
   try {
     const s = JSON.parse($('backup').value);
     if (!Array.isArray(s.teams) || !Array.isArray(s.fixtures)) throw new Error();
-    state = { history: [], cfg: { sims: DEFAULT_CONFIG.sims, homeAdv: DEFAULT_CONFIG.homeAdv }, ...s, undo: [] };
+    state = normalize({ ...s, undo: [] });
     state.focus ??= state.teams[0]?.name;
     save(); renderAll(); recompute();
     $('cfgStatus').className = 'status'; $('cfgStatus').textContent = 'Datos restaurados.';
@@ -377,3 +445,8 @@ document.querySelector('.tabs').addEventListener('click', e => {
 state = load();
 renderAll();
 recompute();
+// Jev solo está disponible cuando la app corre con su servidor (npm start) y hay API key.
+fetch('/api/status').then(r => r.ok ? r.json() : null).then(s => {
+  jevAvailable = !!s?.jev;
+  if (jevAvailable) renderAll();
+}).catch(() => {});

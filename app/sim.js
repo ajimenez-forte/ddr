@@ -9,6 +9,7 @@ export const DEFAULT_CONFIG = {
   awayFactor: 0.87,       // multiplicador de goles del visitante
   priorMatches: 5,        // partidos "ficticios" de promedio para encoger la estimación
   penaltiesHomeEdge: 0.5, // probabilidad de ganar penales para el local de la vuelta
+  jevWeight: 0.5,         // peso del pronóstico de Jev frente al modelo de goles (0 a 1)
 };
 
 // Generador pseudoaleatorio con semilla (mulberry32) para resultados reproducibles.
@@ -47,11 +48,52 @@ export function strengths(teams, cfg = DEFAULT_CONFIG) {
   return { mu, s: out };
 }
 
-function playMatch(home, away, model, cfg, rand) {
+function lambdas(home, away, model, cfg) {
   const h = model.s[home], a = model.s[away];
-  const lh = model.mu * h.att * a.def * cfg.homeAdv;
-  const la = model.mu * a.att * h.def * cfg.awayFactor;
+  return [model.mu * h.att * a.def * cfg.homeAdv, model.mu * a.att * h.def * cfg.awayFactor];
+}
+
+function playMatch(home, away, model, cfg, rand) {
+  const [lh, la] = lambdas(home, away, model, cfg);
   return [poisson(lh, rand), poisson(la, rand)];
+}
+
+// Probabilidades de local / empate / visitante según el modelo de goles.
+export function matchProbs(home, away, model, cfg = DEFAULT_CONFIG) {
+  const [lh, la] = lambdas(home, away, model, cfg);
+  const pmf = l => { const p = [Math.exp(-l)]; for (let k = 1; k <= 15; k++) p.push(p[k - 1] * l / k); return p; };
+  const ph = pmf(lh), pa = pmf(la);
+  let H = 0, D = 0, A = 0;
+  for (let i = 0; i <= 15; i++) for (let j = 0; j <= 15; j++) {
+    const p = ph[i] * pa[j];
+    if (i > j) H += p; else if (i === j) D += p; else A += p;
+  }
+  const t = H + D + A;
+  return { home: H / t, draw: D / t, away: A / t };
+}
+
+// Mezcla el modelo con el pronóstico de Jev cuando el partido lo tiene.
+export function blendedProbs(f, model, cfg = DEFAULT_CONFIG) {
+  const m = matchProbs(f.home, f.away, model, cfg);
+  if (!f.jev) return m;
+  const w = cfg.jevWeight;
+  return {
+    home: (1 - w) * m.home + w * f.jev.home,
+    draw: (1 - w) * m.draw + w * f.jev.draw,
+    away: (1 - w) * m.away + w * f.jev.away,
+  };
+}
+
+// Sortea primero el resultado (gana local / empate / gana visitante) con las
+// probabilidades mezcladas y luego un marcador de Poisson coherente con él.
+function playWithProbs(f, probs, model, cfg, rand) {
+  const r = rand();
+  const want = r < probs.home ? 1 : r < probs.home + probs.draw ? 0 : -1;
+  for (let k = 0; k < 60; k++) {
+    const [gh, ga] = playMatch(f.home, f.away, model, cfg, rand);
+    if (Math.sign(gh - ga) === want) return [gh, ga];
+  }
+  return want === 1 ? [1, 0] : want === 0 ? [1, 1] : [0, 1];
 }
 
 function emptyRow(name) {
@@ -118,7 +160,8 @@ function playFinal(x, y, model, cfg, rand, leaguePos) {
 /**
  * Corre la simulación completa.
  * teams:    [{ name, pj, g, e, p, gf, gc, ajuste? }]
- * fixtures: [{ home, away }] partidos de fase regular aún sin jugar
+ * fixtures: [{ home, away, jev? }] partidos de fase regular aún sin jugar;
+ *           jev = { home, draw, away } es el pronóstico de Jev para ese partido
  * focus:    nombre del equipo para el análisis condicional del próximo partido
  */
 export function simulate(teams, fixtures, opts = {}) {
@@ -129,6 +172,7 @@ export function simulate(teams, fixtures, opts = {}) {
   const stats = {};
   for (const n of names) stats[n] = { top8: 0, first: 0, final: 0, champ: 0, posSum: 0 };
 
+  const leagueProbs = fixtures.map(f => f.jev ? blendedProbs(f, model, cfg) : null);
   const focus = cfg.focus;
   const nextIdx = focus ? fixtures.findIndex(f => f.home === focus || f.away === focus) : -1;
   const cond = { W: { n: 0, top8: 0, champ: 0 }, D: { n: 0, top8: 0, champ: 0 }, L: { n: 0, top8: 0, champ: 0 } };
@@ -142,7 +186,9 @@ export function simulate(teams, fixtures, opts = {}) {
     }
     let focusRes = null;
     fixtures.forEach((f, idx) => {
-      const [gh, ga] = playMatch(f.home, f.away, model, cfg, rand);
+      const [gh, ga] = leagueProbs[idx]
+        ? playWithProbs(f, leagueProbs[idx], model, cfg, rand)
+        : playMatch(f.home, f.away, model, cfg, rand);
       apply(table, f.home, f.away, gh, ga);
       if (idx === nextIdx) {
         const forFocus = f.home === focus ? gh - ga : ga - gh;

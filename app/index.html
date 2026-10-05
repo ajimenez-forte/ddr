@@ -92,6 +92,11 @@ button:disabled { opacity: .5; cursor: default; }
 .fx .a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fx.mine { background: var(--accent-soft); }
 .others { margin-top: 10px; }
+.fx .meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: .78rem; color: var(--muted); padding-bottom: 2px; }
+.probs { font-family: var(--mono); font-size: .74rem; }
+.probs.jev { color: var(--accent); font-weight: 600; }
+.fx .ctx { flex: 1 1 16em; min-width: 0; font-size: .8rem; padding: 2px 6px; }
+.jevbar { display: grid; gap: 6px; padding: 10px 12px; border: 1px dashed var(--accent); border-radius: 6px; margin-bottom: 10px; }
 .others summary { padding: 6px 0; }
 .note { font-size: .82rem; color: var(--muted); }
 .status { font-size: .85rem; color: var(--muted); min-height: 1.3em; }
@@ -157,6 +162,12 @@ details summary { cursor: pointer; font-weight: 600; }
 
       <div data-pane="pend">
         <p class="note">Escribe el marcador cuando termine un partido y pulsa <b>Registrar</b>. La tabla se actualiza y las probabilidades se recalculan.</p>
+        <div class="jevbar" id="jevBar" hidden>
+          <div class="row"><button class="btn" id="askJev" type="button">Consultar a Jev</button><button class="btn ghost" id="jevClear" type="button">Quitar pronósticos de Jev</button></div>
+          <span class="note">Jev lee la tabla y el contexto que escribas en cada partido, y devuelve probabilidades de local, empate y visitante. Se consultan los partidos del equipo elegido y los que tengan contexto.</span>
+          <div class="status" id="jevStatus"></div>
+        </div>
+        <p class="note">Debajo de cada partido: probabilidad de <b>local · empate · visitante</b> según el modelo de goles y, si lo consultaste, según Jev.</p>
         <div id="fixtures"></div>
         <details>
           <summary>Agregar partidos pendientes</summary>
@@ -182,6 +193,8 @@ details summary { cursor: pointer; font-weight: 600; }
       <div data-pane="cfg" hidden>
         <div class="row"><label for="cfgSims">Simulaciones</label><input id="cfgSims" type="number" min="1000" max="100000" step="1000" style="width:6em"></div>
         <div class="row"><label for="cfgHome">Ventaja de local (multiplicador de goles)</label><input id="cfgHome" type="number" min="0.8" max="1.6" step="0.01" style="width:5em"></div>
+        <div class="row"><label for="cfgJev">Peso de Jev en los partidos que pronosticó</label><input id="cfgJev" type="range" min="0" max="1" step="0.05"><span class="num" id="cfgJevVal"></span></div>
+        <p class="note" id="jevOff">Jev está apagado en esta vista. Para usarlo, corre la app con <code>npm start</code> y la variable <code>TYPESAFE_API_KEY</code> definida en tu equipo.</p>
         <p class="note">Formato que simula la app: los 8 primeros pasan a cuadrangulares. 1º y 2º son cabeza de grupo, y las parejas 3º-4º, 5º-6º y 7º-8º se sortean entre los dos grupos. Cada grupo juega ida y vuelta; el ganador va a la final de ida y vuelta, y en empate global se definen penales. Revisa que esto coincida con el reglamento vigente de la Dimayor.</p>
         <p class="note">Cómo se estima la fuerza: goles a favor y en contra por partido de cada equipo, mezclados con 5 partidos del promedio de la liga para no exagerar rachas cortas. Los goles de cada partido se sortean con una distribución de Poisson.</p>
         <h3>Respaldo</h3>

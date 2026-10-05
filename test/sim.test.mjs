@@ -60,3 +60,21 @@ test('el análisis del próximo partido es coherente', () => {
   assert.ok(Math.abs(m.W.share + m.D.share + m.L.share - 1) < 1e-9);
   assert.ok(m.W.top8 >= m.L.top8);
 });
+
+test('matchProbs suma 1 y favorece al más fuerte', async () => {
+  const { strengths, matchProbs } = await import('../app/sim.js');
+  const t = liga();
+  const p = matchProbs('E1', 'E10', strengths(t));
+  assert.ok(Math.abs(p.home + p.draw + p.away - 1) < 1e-9);
+  assert.ok(p.home > p.away);
+});
+
+test('un pronóstico de Jev con peso 1 manda en el resultado del partido', () => {
+  const t = liga();
+  // E10 (el más débil) recibe a E1, pero Jev dice que E10 gana seguro.
+  const fx = [{ home: 'E10', away: 'E1', jev: { home: 1, draw: 0, away: 0 } }];
+  const r = simulate(t, fx, { sims: 300, jevWeight: 1, focus: 'E10' });
+  assert.equal(r.nextMatch.W.share, 1);
+  const r0 = simulate(t, fx, { sims: 300, jevWeight: 0, focus: 'E10' });
+  assert.ok(r0.nextMatch.W.share < 1);
+});
